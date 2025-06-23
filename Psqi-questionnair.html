@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -280,7 +281,88 @@
             scores.global = scores.comp1 + scores.comp2 + scores.comp3 + scores.comp4 + scores.comp5 + scores.comp6 + scores.comp7;
             return scores;
         }
-
+        
         async function saveResponse(answers, scores) {
             if (!db || !userId) {
+                 console.error("DB or UserID not available for saving.");
+                 return;
+            }
+            try {
+                const collectionPath = `/artifacts/${appId}/users/${userId}/psqi_responses`;
+                await addDoc(collection(db, collectionPath), {
+                    answers: answers, 
+                    scores: scores, 
+                    createdAt: new Date(),
+                });
+            } catch (error) {
+                console.error("Error saving response to Firestore: ", error);
+            }
+        }
+        
+        function loadHistory() {
+             if (!db || !userId) {
+                 console.error("DB or UserID not available for loading history.");
+                 return;
+             }
+             const collectionPath = `/artifacts/${appId}/users/${userId}/psqi_responses`;
+             const q = query(collection(db, collectionPath));
+
+             onSnapshot(q, (querySnapshot) => {
+                 historyContainer.innerHTML = '';
+                 if (querySnapshot.empty) {
+                     historyContainer.innerHTML = '<p class="text-center text-gray-500">You have no previous responses.</p>';
+                     return;
+                 }
+                 const responses = [];
+                 querySnapshot.forEach(doc => responses.push(doc.data()));
+                 responses.sort((a,b) => b.createdAt.toDate() - a.createdAt.toDate());
+                 responses.forEach(data => {
+                     const card = document.createElement('div');
+                     card.className = 'bg-white p-4 rounded-lg shadow-sm border border-gray-200';
+                     const scoreColor = data.scores.global > 5 ? 'text-red-600' : 'text-green-600';
+                     const scoreText = data.scores.global > 5 ? 'Poor Sleep Quality' : 'Good Sleep Quality';
+                     card.innerHTML = `<div class="flex justify-between items-start"><div><p class="font-semibold text-lg">Global Score: <span class="font-bold ${scoreColor}">${data.scores.global}</span></p><p class="text-sm ${scoreColor}">${scoreText}</p><p class="text-xs text-gray-400 mt-2">Submitted on: ${data.createdAt.toDate().toLocaleString()}</p></div></div>`;
+                     historyContainer.appendChild(card);
+                 });
+             }, (error) => {
+                 console.error("Error loading history: ", error);
+                 historyContainer.innerHTML = '<p class="text-center text-red-500">Error loading your response history.</p>';
+             });
+        }
+        
+        psqiForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Calculating...';
+
+            const formData = new FormData(psqiForm);
+            const answers = {
+                q1: formData.get('q1'), q2: parseInt(formData.get('q2')), q3: formData.get('q3'), q4: parseFloat(formData.get('q4')),
+                q5a: parseInt(formData.get('q5a')), q5b: parseInt(formData.get('q5b')), q5c: parseInt(formData.get('q5c')), q5d: parseInt(formData.get('q5d')), q5e: parseInt(formData.get('q5e')),
+                q5f: parseInt(formData.get('q5f')), q5g: parseInt(formData.get('q5g')), q5h: parseInt(formData.get('q5h')), q5i: parseInt(formData.get('q5i')), q5j: parseInt(formData.get('q5j')),
+                q6: parseInt(formData.get('q6')), q7: parseInt(formData.get('q7')), q8: parseInt(formData.get('q8')), q9: parseInt(formData.get('q9')),
+            };
             
+            const scores = calculatePSQIScore(answers);
+            await saveResponse(answers, scores);
+
+            let interpretation = scores.global > 5 
+                ? '<p class="text-red-600 font-semibold">A score greater than 5 is indicative of poor sleep quality.</p>' 
+                : '<p class="text-green-600 font-semibold">A score of 5 or less indicates good sleep quality.</p>';
+            scoreDisplay.innerHTML = `<p class="text-5xl font-bold mb-4">${scores.global}</p>${interpretation}`;
+            
+            resultsModal.classList.add('is-visible');
+            psqiForm.reset();
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Calculate Score & Submit';
+        });
+        
+        closeModalBtn.addEventListener('click', () => {
+            resultsModal.classList.remove('is-visible');
+        });
+
+        initializeFirebase();
+    </script>
+</body>
+</html>
+           
